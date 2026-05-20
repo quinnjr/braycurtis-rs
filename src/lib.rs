@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Compute Bray-Curtis dissimilarity between two non-negative abundance
 /// vectors.
@@ -41,6 +41,34 @@ pub fn bray_curtis(a: &[f64], b: &[f64]) -> f64 {
 // ---------------------------------------------------------------------------
 // Parameter / CSV I/O
 // ---------------------------------------------------------------------------
+
+/// Resolve a path referenced *inside* a parameter file against the PluMA
+/// pipeline convention (`<prefix>/parameters/<name>.txt` → resolve against
+/// `<prefix>`). Falls back to the parameter file's parent directory, then
+/// the raw value.
+pub fn resolve_input_path(param_file: &Path, value: &str) -> PathBuf {
+    let p = Path::new(value);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    let param_dir = param_file.parent();
+    let prefix = param_dir.and_then(Path::parent);
+    if let Some(pre) = prefix {
+        let candidate = pre.join(p);
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    if let Some(pd) = param_dir {
+        let candidate = pd.join(p);
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    prefix
+        .map(|pre| pre.join(p))
+        .unwrap_or_else(|| p.to_path_buf())
+}
 
 fn read_parameters<P: AsRef<Path>>(path: P) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let text = std::fs::read_to_string(path)?;
@@ -235,16 +263,19 @@ impl BrayCurtisPlugin {
 
 impl PluMAPlugin for BrayCurtisPlugin {
     fn input(&mut self, filepath: String) -> Result<(), Box<dyn Error>> {
-        let params = read_parameters(&filepath)?;
-        let otu_path = params
+        let param_file = PathBuf::from(&filepath);
+        let params = read_parameters(&param_file)?;
+        let otu_raw = params
             .get("otufile")
-            .ok_or("parameter file missing 'otufile'")?
-            .clone();
+            .ok_or("parameter file missing 'otufile'")?;
+        let otu_path = resolve_input_path(&param_file, otu_raw);
         let (samples, otus, counts) = read_otu_csv(otu_path)?;
         self.samples = samples;
         self.otus = otus;
         self.counts = counts;
-        self.mapping_path = params.get("mapping").cloned();
+        self.mapping_path = params
+            .get("mapping")
+            .map(|v| resolve_input_path(&param_file, v).to_string_lossy().into_owned());
         self.group_column = params.get("column").cloned();
         Ok(())
     }
@@ -555,6 +586,30 @@ mod tests {
         assert!(mds.is_some());
         assert!(eigs.is_some());
         assert_eq!(mds.unwrap().len(), 4);
+    }
+
+    #[test]
+    fn resolve_input_path_uses_pluma_prefix_convention() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prefix = tmp.path();
+        let params_dir = prefix.join("parameters");
+        let csv_dir = prefix.join("CSV");
+        std::fs::create_dir_all(&params_dir).unwrap();
+        std::fs::create_dir_all(&csv_dir).unwrap();
+        let target = csv_dir.join("x.csv");
+        std::fs::write(&target, "OTU\n").unwrap();
+        let param_file = params_dir.join("foo.txt");
+        std::fs::write(&param_file, "").unwrap();
+
+        assert_eq!(resolve_input_path(&param_file, "CSV/x.csv"), target);
+    }
+
+    #[test]
+    fn resolve_input_path_preserves_absolute() {
+        assert_eq!(
+            resolve_input_path(Path::new("/etc/foo.txt"), "/abs/path.csv"),
+            PathBuf::from("/abs/path.csv")
+        );
     }
 
     #[test]
