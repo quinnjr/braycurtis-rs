@@ -1,0 +1,33 @@
+[package]
+name = "braycurtis-rs"
+version = "0.1.0"
+edition = "2024"
+authors = ["Joseph R. Quinn <quinn.josephr@protonmail.com>"]
+description = "PluMA plugin: Bray-Curtis pairwise dissimilarity between samples"
+license = "MIT"
+repository = "https://github.com/quinnjr/braycurtis-rs"
+keywords = ["bioinformatics", "ecology", "dissimilarity", "pluma", "plugin"]
+categories = ["science", "algorithms"]
+
+[lib]
+name = "braycurtis"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pluma-plugin-trait = "1.1.0"
+csv = "1.4.0"
+rayon = "1.12.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+criterion = "0.8.2"
+
+[[bench]]
+name = "braycurtis_bench"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true

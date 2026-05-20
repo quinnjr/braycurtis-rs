@@ -1,0 +1,3 @@
+otufile	example/otu_table.csv
+mapping	example/sample_metadata.csv
+column	Description

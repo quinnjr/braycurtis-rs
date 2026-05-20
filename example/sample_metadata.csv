@@ -1,0 +1,7 @@
+sample,Description,Age,Sex
+PD_001,Case,68,M
+PD_002,Case,72,F
+PD_003,Case,65,M
+CTRL_001,Control,70,F
+CTRL_002,Control,69,M
+CTRL_003,Control,66,F
